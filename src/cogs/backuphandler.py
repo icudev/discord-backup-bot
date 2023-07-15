@@ -17,11 +17,6 @@ CHANNEL_TYPES = {
     "15": discord.ChannelType.forum,
 }
 
-VIDEO_QUALITY_MODES = {
-    "1": discord.VideoQualityMode.auto,
-    "2": discord.VideoQualityMode.full,
-}
-
 
 async def check_dm_and_user_permissions(interaction: discord.Interaction) -> bool:
     """
