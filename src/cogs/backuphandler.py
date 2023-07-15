@@ -269,6 +269,7 @@ class BackupHandler(Cog):
                     if key in current_channel.keys():
                         del current_channel[key]
 
+                pop_if_available("id")
                 pop_if_available("category_id")
 
                 if action == "edit" or reference_channel:
@@ -280,6 +281,12 @@ class BackupHandler(Cog):
                         # Pop the overwrites over here because they're used to compare the
                         # permissions of both channels
                         pop_if_available("overwrites")
+
+                        if not overwrites:
+                            if sorted(current_channel.items(), key=lambda x: x[0]) == sorted(
+                                backup_channel.items(), key=lambda x: x[0]
+                            ):
+                                continue
 
                         try:
                             await reference_channel.edit(
