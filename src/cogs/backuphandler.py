@@ -55,7 +55,6 @@ class BackupHandler(Cog):
 
     def __init__(self, bot) -> None:
         self.bot = bot
-        self.bot.loop.create_task(bot.save_cache_loop())
 
         self.reference_channels = {}
 

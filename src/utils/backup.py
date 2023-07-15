@@ -104,6 +104,7 @@ class Backup:
             return
 
         self.insert_self_to_cache()
+        self.write_to_file()
 
     @property
     def id(self) -> str:
@@ -135,6 +136,8 @@ class Backup:
         with open(get_path("backup.json"), "w", encoding="utf-8") as backup_file_writer:
             json.dump(BackupCache.v, backup_file_writer)
             BackupCache.old = BackupCache.v.copy()
+
+            logging.info('Saved backups into file')
 
         return True
 
@@ -217,6 +220,7 @@ class Backup:
             return False
 
         BackupCache.v.pop(self.id)
+        self.write_to_file()
 
         logging.info(f'Deleted backup with id "{self.id}"')
 

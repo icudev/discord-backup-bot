@@ -71,16 +71,6 @@ class BackupBot(commands.Bot):
         Backup.write_to_file()
 
     @staticmethod
-    async def save_cache_loop() -> None:
-        """Loop to write the cache into a file"""
-
-        while True:
-            await asyncio.sleep(5)
-
-            if Backup.write_to_file():
-                logging.info("Saved backups to file")
-
-    @staticmethod
     def setup_files() -> None:
         """Creates necessary files for the bot to run if not already existing"""
 
