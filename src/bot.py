@@ -55,13 +55,11 @@ class BackupBot(commands.Bot):
         self.setup_files()
         await self.load_extensions()
 
-        # Loads the backup cache
         Backup.setup_cache()
 
         if not DISABLE_COMMAND_SYNC:
             logging.info("Syncing command tree...")
 
-            # Syncs the command tree and registers the slash commands
             await self.tree.sync()
 
             logging.info("Synced command tree.")
@@ -77,7 +75,6 @@ class BackupBot(commands.Bot):
         """Loop to write the cache into a file"""
 
         while True:
-            # Tries to write the cache into a file every five seconds
             await asyncio.sleep(5)
 
             if Backup.write_to_file():

@@ -39,14 +39,12 @@ async def check_dm_and_user_permissions(interaction: discord.Interaction) -> boo
         Wether or not the check was succesful
     """
 
-    # Check if command was executed in a dm channel
     if not interaction.guild:
         await interaction.followup.send(
             f"This command can only be used in a server", ephemeral=True
         )
         return False
 
-    # Check if user has the required permissions
     if not interaction.user.guild_permissions.administrator:
         await interaction.followup.send(
             f"You do not have the required permissions to use this command",
@@ -115,7 +113,6 @@ class BackupHandler(Cog):
 
         guild_backup = Backup.from_id(backup_id)
 
-        # When the backup id is 0 it means that no backup has been found
         if guild_backup.id == "0":
             await interaction.followup.send("I couldn't find a backup with that id")
             return
@@ -141,7 +138,6 @@ class BackupHandler(Cog):
                     )
                     return
 
-        # Every channel
         all_backup_channels = []
 
         # Data on how to edit which channel
@@ -243,7 +239,7 @@ class BackupHandler(Cog):
 
                     all_backup_channels.append(reference_channel.id)
 
-                # Convert the custom overwrite object into an `discord.PermissionOverwrite` object
+                # Convert the custom overwrite object into an object readable by discord
                 overwrites = {}
 
                 for overwrite_object in backup_channel.get("overwrites"):
