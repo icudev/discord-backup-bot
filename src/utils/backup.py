@@ -53,7 +53,7 @@ def generate_unique_id() -> str:
 
         return "".join(
             [
-                random.choice(string.ascii_letters + "0123456789")
+                random.choice(LETTERS)
                 for _ in range(BACKUP_ID_LENGTH)
             ]
         )
