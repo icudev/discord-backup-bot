@@ -269,10 +269,10 @@ class BackupHandler(Cog):
                     if key in current_channel.keys():
                         del current_channel[key]
 
-                pop_if_available("id")
                 pop_if_available("category_id")
 
                 if action == "edit" or reference_channel:
+                    pop_if_available("id")
                     pop_if_available("type")
 
                     if sorted(current_channel.items(), key=lambda x: x[0]) != sorted(
