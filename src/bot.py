@@ -25,7 +25,7 @@ EXTENSIONS = [
 # Do *NOT* turn this on on the first run
 DISABLE_COMMAND_SYNC = False
 
-FILES_NEEDED = {"backup.json": "{}", "ref_channels.json": "{}"}
+FILES_NEEDED = {"backup.json": "{}", "references.json": "{}"}
 
 
 class BackupBot(commands.Bot):

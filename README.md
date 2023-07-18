@@ -27,7 +27,7 @@ That also makes the install easy as you don't have to set up anything besides th
 | :heavy_check_mark: | Cross Server Backups |
 | :heavy_check_mark: | Channel / Category backups |
 | :x: | Automatic backups in intervals |
-| :x: | Role backups |
+| :heavy_check_mark: | Role backups |
 | :x: | Message backups |
 
 ## Setup
@@ -56,9 +56,8 @@ That also makes the install easy as you don't have to set up anything besides th
 ## FAQ
 > Why is the bot not doing anything when loading a backup?
 
-Make sure that the bot role is above every other and has the following permissions:
-* Manage Roles
-* Manage Channels
+Make sure that the bot role is above every other and has the following permission:
+* Administrator
 
 If that doesn't help it could be because your bot got ratelimited. This happens when
 you load a lot of backups in a short amount of time. In that case you just have to wait.

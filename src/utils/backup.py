@@ -30,6 +30,17 @@ CHANNEL_ATTRIBUTE_NAMES = [
     "video_quality_mode",
 ]
 
+ROLE_ATTRIBUTE_NAMES = [
+    "name",
+    "id",
+    "permissions",
+    "colour",
+    "hoist",
+    "display_icon",
+    "mentionable",
+    "position",
+]
+
 LETTERS = string.ascii_letters + "0123456789"
 
 
@@ -51,12 +62,7 @@ def generate_unique_id() -> str:
             The random id
         """
 
-        return "".join(
-            [
-                random.choice(LETTERS)
-                for _ in range(BACKUP_ID_LENGTH)
-            ]
-        )
+        return "".join([random.choice(LETTERS) for _ in range(BACKUP_ID_LENGTH)])
 
     _id = generate_random_id()
 
@@ -92,13 +98,27 @@ class Backup:
         The unique backup id
     channels: Optional[List[Dict]]
         An optional list of all guild channels in a backup
+    rules_channel: Optional[int]
+        Optional rules channel id of community guilds
+    public_updates_channel: Optional[int]
+        Optional updates channel id of community guilds
+    roles: Optional[List[Dict]]
+        An optional list of all guild roles in a backup
     """
 
     def __init__(
-        self, _id: Optional[str] = None, channels: Optional[List[Dict]] = None
+        self,
+        _id: Optional[str] = None,
+        channels: Optional[List[Dict]] = None,
+        rules_channel: Optional[int] = None,
+        public_updates_channel: Optional[int] = None,
+        roles: Optional[List[Dict]] = None,
     ) -> None:
         self._id: str = _id or generate_unique_id()
         self.channels: Optional[List[Dict]] = channels
+        self.rules_channel: Optional[int] = rules_channel
+        self.public_updates_channel: Optional[int] = public_updates_channel
+        self.roles: Optional[List[Dict]] = roles
 
         if self._id == "0":
             return
@@ -137,7 +157,7 @@ class Backup:
             json.dump(BackupCache.v, backup_file_writer)
             BackupCache.old = BackupCache.v.copy()
 
-            logging.info('Saved backups into file')
+            logging.info("Saved backups into file")
 
         return True
 
@@ -156,26 +176,20 @@ class Backup:
             The backup
         """
 
-        channels: List[Dict] = []
-
-        for guild_channel in guild.channels:
-            channel_info = extract_attributes_from_class(
-                attributes=CHANNEL_ATTRIBUTE_NAMES,
-                _class=guild_channel,
-                convert={
-                    "type": lambda type_value: type_value[1],
-                    "overwrites": lambda overwrites: convert_permissionoverwrite_to_list(
-                        overwrites
-                    ),
-                    "video_quality_mode": lambda video_quality_mode: video_quality_mode[
-                        1
-                    ],
-                },
-            )
-
-            channels.append(channel_info)
-
-        return cls(channels=channels)
+        return cls(
+            channels=[
+                convert_guild_channel_to_json(channel) for channel in guild.channels
+            ],
+            rules_channel=guild.rules_channel.id if guild.rules_channel else None,
+            public_updates_channel=guild.public_updates_channel.id
+            if guild.public_updates_channel
+            else None,
+            roles=[
+                convert_guild_role_to_json(role)
+                for role in guild.roles
+                if not role.is_bot_managed()
+            ],
+        )
 
     @classmethod
     def from_id(cls, _id: str) -> "Backup":
@@ -337,7 +351,7 @@ def extract_attributes_from_class(
         return result
 
     for attribute in dir(_class):
-        if attribute not in attributes:
+        if str(attribute) not in attributes:
             continue
 
         value = getattr(_class, attribute)
@@ -351,3 +365,28 @@ def extract_attributes_from_class(
         result.update({attribute: value})
 
     return result
+
+
+def convert_guild_channel_to_json(guild_channel: discord.abc.GuildChannel) -> Dict:
+    return extract_attributes_from_class(
+        attributes=CHANNEL_ATTRIBUTE_NAMES,
+        _class=guild_channel,
+        convert={
+            "type": lambda type_value: type_value[1],
+            "overwrites": lambda overwrites: convert_permissionoverwrite_to_list(
+                overwrites
+            ),
+            "video_quality_mode": lambda video_quality_mode: video_quality_mode[1],
+        },
+    )
+
+
+def convert_guild_role_to_json(guild_role: discord.Role) -> Dict:
+    return extract_attributes_from_class(
+        attributes=ROLE_ATTRIBUTE_NAMES,
+        _class=guild_role,
+        convert={
+            "colour": lambda colour: colour.to_rgb(),
+            "permissions": lambda permissions: permissions.value,
+        },
+    )

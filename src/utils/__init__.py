@@ -1,8 +1,9 @@
 from .backup import (
-    CHANNEL_ATTRIBUTE_NAMES,
     Backup,
     BackupCache,
     BackupChannel,
+    convert_guild_channel_to_json,
+    convert_guild_role_to_json,
     convert_permissionoverwrite_to_list,
     extract_attributes_from_class,
 )
