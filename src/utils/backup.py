@@ -3,6 +3,7 @@ import logging
 import json
 import random
 import string
+import os
 
 from .path import get_path
 from typing import Any, Callable, Dict, List, Optional, Union
@@ -162,7 +163,7 @@ class Backup:
         return True
 
     @classmethod
-    def create(cls, guild: discord.Guild) -> "Backup":
+    async def create(cls, guild: discord.Guild) -> "Backup":
         """Creates a backup of a guild
 
         Parameters
@@ -185,7 +186,7 @@ class Backup:
             if guild.public_updates_channel
             else None,
             roles=[
-                convert_guild_role_to_json(role)
+                await convert_guild_role_to_json(role)
                 for role in guild.roles
                 if not role.is_bot_managed()
             ],
@@ -381,12 +382,24 @@ def convert_guild_channel_to_json(guild_channel: discord.abc.GuildChannel) -> Di
     )
 
 
-def convert_guild_role_to_json(guild_role: discord.Role) -> Dict:
-    return extract_attributes_from_class(
+async def convert_guild_role_to_json(guild_role: discord.Role) -> Dict:
+    raw_guild_role = extract_attributes_from_class(
         attributes=ROLE_ATTRIBUTE_NAMES,
         _class=guild_role,
         convert={
-            "colour": lambda colour: colour.to_rgb(),
+            "colour": lambda colour: list(colour.to_rgb()),
             "permissions": lambda permissions: permissions.value,
         },
     )
+
+    # Poor implementation of image saving, but it works (somehow)
+    if (dis_icon := raw_guild_role.get("display_icon")) is not None:
+        if not os.path.exists(get_path("assets")):
+            os.mkdir(get_path("assets"))
+
+        with open(get_path(f"assets/{dis_icon.key}.png"), "wb") as role_image_file:
+            role_image_file.write(await dis_icon.read())
+
+        raw_guild_role.update({"display_icon": dis_icon.key})
+
+    return raw_guild_role

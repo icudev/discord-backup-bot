@@ -1,11 +1,18 @@
 import discord
 import json
 import logging
+import os
 
 from discord import app_commands
 from discord.ext.commands import Cog
-from utils import *
-from typing import Any, Callable, Dict, List, Optional, Union, Tuple
+from utils import (
+    Backup,
+    BackupChannel,
+    convert_guild_channel_to_json,
+    convert_guild_role_to_json,
+    get_path,
+)
+from typing import Callable, Dict, List, Optional, Union, Tuple
 
 
 CHANNEL_TYPES = {
@@ -36,13 +43,13 @@ async def check_dm_and_user_permissions(interaction: discord.Interaction) -> boo
 
     if not interaction.guild:
         await interaction.followup.send(
-            f"This command can only be used in a server", ephemeral=True
+            "This command can only be used in a server", ephemeral=True
         )
         return False
 
     if not interaction.user.guild_permissions.administrator:
         await interaction.followup.send(
-            f"You do not have the required permissions to use this command",
+            "You do not have the required permissions to use this command",
             ephemeral=True,
         )
         return False
@@ -78,7 +85,7 @@ class BackupHandler(Cog):
         if not await check_dm_and_user_permissions(interaction):
             return
 
-        guild_backup = Backup.create(interaction.guild)
+        guild_backup = await Backup.create(interaction.guild)
 
         logging.info(
             f'Created backup for server "{interaction.guild.name}" with ID "{guild_backup.id}"'
@@ -194,6 +201,8 @@ class BackupHandler(Cog):
                 checks=[
                     lambda _role: _role.id != guild.id,
                     lambda _role: not _role.is_bot_managed(),
+                    lambda _role: _role.is_assignable(),
+                    lambda _role: not _role.is_integration(),
                 ],
             )
 
@@ -231,7 +240,7 @@ class BackupHandler(Cog):
                     )
                 )
 
-            raw_current_role = convert_guild_role_to_json(current_role)
+            raw_current_role = await convert_guild_role_to_json(current_role)
 
             if current_role:
                 # The current role is the bot role of self, which we cant edit
@@ -277,8 +286,30 @@ class BackupHandler(Cog):
                 all_used_roles.append(role.id)
 
             else:
+                all_used_roles.append(current_role.id)
+
                 del backup_role["id"]
                 del raw_current_role["id"]
+
+                del_display_icon = False
+
+                if "ROLE_ICONS" in guild.features:
+                    if (dis_icon_key := backup_role.get("display_icon")) is not None:
+                        if not os.path.exists(get_path(f"assets/{dis_icon_key}.png")):
+                            del_display_icon = True
+
+                        else:
+                            with open(
+                                get_path(f"assets/{dis_icon_key}.png"), "b"
+                            ) as role_icon:
+                                backup_role.update({"display_icon": role_icon.read()})
+
+                else:
+                    del_display_icon = True
+
+                if del_display_icon:
+                    del backup_role["display_icon"]
+                    del raw_current_role["display_icon"]
 
                 if backup_role == raw_current_role:
                     continue
@@ -302,7 +333,6 @@ class BackupHandler(Cog):
                     del raw_current_role["position"]
 
                 await current_role.edit(**backup_role)
-                all_used_roles.append(current_role.id)
 
         # For some reason the bot cannot edit the positions of roles, so I left this out
         #
@@ -397,8 +427,6 @@ class BackupHandler(Cog):
                     target_object = guild.get_member(target_id) or guild.get_role(
                         target_id
                     )
-
-                    overwrite_object.update({"target_id": target_id})
 
                     if not target_object:
                         continue
