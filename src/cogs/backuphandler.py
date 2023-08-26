@@ -1,5 +1,4 @@
 import discord
-import json
 import logging
 import os
 
@@ -63,20 +62,7 @@ class BackupHandler(Cog):
     def __init__(self, bot) -> None:
         self.bot = bot
 
-        self.reference_ids = {}
-
-    async def cog_load(self) -> None:
-        with open(get_path("references.json"), "r") as references_file:
-            self.reference_ids = json.load(references_file)
-
-    def write_references_to_file(self) -> None:
-        with open(get_path("references.json"), "w") as references_file:
-            json.dump(self.reference_ids, references_file)
-
-        logging.info("Saved references to file")
-
     @backup.command(name="create", description="Create a backup of the server")
-    @app_commands.guild_only()  # Unnecessary since this decorator doesn't work on subcommands, but I'll leave it
     async def backup_create_callback(self, interaction: discord.Interaction) -> None:
         """Callback for the `/backup create` slash command"""
 
@@ -86,6 +72,8 @@ class BackupHandler(Cog):
             return
 
         guild_backup = await Backup.create(interaction.guild)
+
+        self.bot.db.insert_backup(guild_backup)
 
         logging.info(
             f'Created backup for server "{interaction.guild.name}" with ID "{guild_backup.id}"'
@@ -98,7 +86,6 @@ class BackupHandler(Cog):
         backup_id="The backup id",
         clear_guild="Clears the whole server (roles, channels) before loading a backup",
     )
-    @app_commands.guild_only()  # Unnecessary since this decorator doesn't work on subcommands, but I'll leave it
     async def backup_load_callback(
         self,
         interaction: discord.Interaction,
@@ -112,18 +99,17 @@ class BackupHandler(Cog):
         if not await check_dm_and_user_permissions(interaction):
             return
 
-        guild_backup = Backup.from_id(backup_id)
+        guild_backup = self.bot.db.get_backup(backup_id)
 
-        if guild_backup.id == "0":
+        if guild_backup is None:
             await interaction.followup.send("I couldn't find a backup with that id")
             return
 
-        if not self.reference_ids.get(backup_id):
-            self.reference_ids[backup_id] = {}
-
-        references = self.reference_ids.get(backup_id)
-
         guild: discord.Guild = interaction.guild
+
+        get_reference = lambda old: self.bot.db.get_reference_id(guild_backup.id, guild.id, old)
+        set_reference = lambda old, new: self.bot.db.set_reference_id(guild_backup.id, guild.id, old, new)
+        del_reference = lambda old: self.bot.db.del_reference_id(guild_backup.id, guild.id, old)
 
         rules_id = None
         updates_id = None
@@ -136,18 +122,14 @@ class BackupHandler(Cog):
             # If the server in which the backup was made was also a community server
             # we have to reference the old rules and updates channel to the new ones
             if guild_backup.rules_channel:
-                references.update(
-                    {
-                        str(guild_backup.rules_channel): rules_id,
-                        str(guild_backup.public_updates_channel): updates_id,
-                    }
-                )
+                set_reference(guild_backup.rules_channel, rules_id)
 
         async def delete_all(
             iterable: List[Union[discord.Role, discord.abc.GuildChannel]],
             checks: Optional[List[Callable]] = None,
         ) -> Tuple[
-            Optional[Union[discord.Role, discord.abc.GuildChannel]], Optional[str]
+            Optional[Union[discord.Role, discord.abc.GuildChannel]],
+            Optional[str]
         ]:
             """Deletes all items in `iterable`
 
@@ -181,8 +163,7 @@ class BackupHandler(Cog):
                         continue
 
                 try:
-                    if references.get(str(item.id)):
-                        del references[str(item.id)]
+                    del_reference(item.id)
 
                     await item.delete(
                         reason=f"Backup loaded by {interaction.user} ( {interaction.user.id} )"
@@ -224,21 +205,19 @@ class BackupHandler(Cog):
         guild_roles_positions: Dict[discord.Role, int] = {}
 
         for backup_role_data in sorted(
-            guild_backup.roles, key=lambda _dict: _dict.get("position")
+            guild_backup.roles,
+            key=lambda _dict: _dict.get("position")
         ):
             role_position = backup_role_data.get("position")
 
             backup_role = backup_role_data.copy()
+
             if role_position == 0:  # everyone role
                 current_role = guild.get_role(guild.id)
-                references.update({str(backup_role_data.get("id")): guild.id})
+                set_reference(backup_role_data.get("id"), guild.id)
 
             else:
-                current_role = guild.get_role(
-                    references.get(
-                        str(backup_role_data.get("id")), backup_role_data.get("id")
-                    )
-                )
+                current_role = guild.get_role(get_reference(backup_role_data.get("id")))
 
             raw_current_role = await convert_guild_role_to_json(current_role)
 
@@ -253,6 +232,32 @@ class BackupHandler(Cog):
                     ]
                 ):
                     continue
+            
+            del_display_icon = False
+
+            if "ROLE_ICONS" in guild.features:
+                if (dis_icon_key := backup_role.get("display_icon")) is not None:
+                    if not os.path.exists(get_path(f"assets/{dis_icon_key}.png")):
+                        del_display_icon = True
+
+                    else:
+                        with open(
+                            get_path(f"assets/{dis_icon_key}.png"), "b"
+                        ) as role_icon:
+                            backup_role.update({"display_icon": role_icon.read()})
+                        
+                else:
+                    del_display_icon = True
+
+            else:
+                del_display_icon = True
+
+            if del_display_icon:
+                if backup_role.get("display_icon", False) is not False:
+                    del backup_role["display_icon"]
+                    
+                if raw_current_role.get("display_role", False) is not False:
+                    del raw_current_role["display_icon"]
 
             # There is no current role -> We have to create a new one
             if not current_role:
@@ -275,6 +280,8 @@ class BackupHandler(Cog):
                     }
                 )
 
+                logging.debug(f"ROLE CREATE: {backup_role}")
+
                 role = await guild.create_role(
                     **backup_role,
                     reason=f"Backup loaded by {interaction.user} ( {interaction.user.id} )",
@@ -282,7 +289,7 @@ class BackupHandler(Cog):
 
                 guild_roles_positions.update({role: role_position})
 
-                references.update({str(role_id): role.id})
+                set_reference(role_id, role.id)
                 all_used_roles.append(role.id)
 
             else:
@@ -290,26 +297,6 @@ class BackupHandler(Cog):
 
                 del backup_role["id"]
                 del raw_current_role["id"]
-
-                del_display_icon = False
-
-                if "ROLE_ICONS" in guild.features:
-                    if (dis_icon_key := backup_role.get("display_icon")) is not None:
-                        if not os.path.exists(get_path(f"assets/{dis_icon_key}.png")):
-                            del_display_icon = True
-
-                        else:
-                            with open(
-                                get_path(f"assets/{dis_icon_key}.png"), "b"
-                            ) as role_icon:
-                                backup_role.update({"display_icon": role_icon.read()})
-
-                else:
-                    del_display_icon = True
-
-                if del_display_icon:
-                    del backup_role["display_icon"]
-                    del raw_current_role["display_icon"]
 
                 if backup_role == raw_current_role:
                     continue
@@ -332,7 +319,16 @@ class BackupHandler(Cog):
                     del backup_role["position"]
                     del raw_current_role["position"]
 
-                await current_role.edit(**backup_role)
+                logging.debug(f"ROLE EDIT: {backup_role}")
+
+                try:
+                    await current_role.edit(**backup_role)
+
+                    guild_roles_positions.update({current_role: role_position})
+                
+                except discord.HTTPException:
+                    logging.debug("EXCEPTION")
+                    continue
 
         # For some reason the bot cannot edit the positions of roles, so I left this out
         #
@@ -395,22 +391,16 @@ class BackupHandler(Cog):
                 reference_category: Optional[discord.CategoryChannel] = None
 
                 backup_category_id = backup_channel.get("category_id")
-                reference_category_id = references.get(
-                    str(backup_category_id), backup_category_id
-                )
+                reference_category_id = get_reference(backup_category_id)
 
                 if reference_category_id:
                     reference_category = guild.get_channel(reference_category_id)
 
                 backup_channel_id = backup_channel.get("id")
-                reference_channel_id = references.get(
-                    str(backup_channel_id), backup_channel_id
-                )
+                reference_channel_id = get_reference(backup_channel_id)
 
                 # The channel to perform the action on
-                reference_channel: Optional[
-                    discord.abc.GuildChannel
-                ] = guild.get_channel(reference_channel_id)
+                reference_channel = guild.get_channel(reference_channel_id)
 
                 if reference_channel:
                     current_channel = convert_guild_channel_to_json(reference_channel)
@@ -422,11 +412,10 @@ class BackupHandler(Cog):
 
                 for overwrite_object in backup_channel.get("overwrites"):
                     target_id = overwrite_object.get("target_id")
-                    target_id = references.get(str(target_id), target_id)
+                    target_id = get_reference(target_id)
 
-                    target_object = guild.get_member(target_id) or guild.get_role(
-                        target_id
-                    )
+                    target_object = guild.get_member(target_id) or \
+                                    guild.get_role(target_id)
 
                     if not target_object:
                         continue
@@ -455,7 +444,11 @@ class BackupHandler(Cog):
                     if key in current_channel.keys():
                         del current_channel[key]
 
-                pop_if_available("category_id")
+                if current_channel.get("type") == 4:
+                    pop_if_available("category_id")
+                
+                else:
+                    backup_channel.update({"category_id": get_reference(backup_channel.get("category_id"))})
 
                 if action == "edit" or reference_channel:
                     if (
@@ -467,8 +460,12 @@ class BackupHandler(Cog):
                     pop_if_available("id")
                     pop_if_available("type")
 
-                    if sorted(current_channel.items(), key=lambda x: x[0]) != sorted(
-                        backup_channel.items(), key=lambda x: x[0]
+                    if sorted(
+                        current_channel.items(),
+                        key=lambda x: x[0]
+                    ) != sorted(
+                        backup_channel.items(),
+                        key=lambda x: x[0]
                     ):
                         # Pop the overwrites over here because they're used to compare the
                         # permissions of both channels
@@ -476,9 +473,15 @@ class BackupHandler(Cog):
 
                         if not overwrites:
                             if sorted(
-                                current_channel.items(), key=lambda x: x[0]
-                            ) == sorted(backup_channel.items(), key=lambda x: x[0]):
+                                current_channel.items(),
+                                key=lambda x: x[0]
+                            ) == sorted(
+                                backup_channel.items(),
+                                key=lambda x: x[0]
+                            ):
                                 continue
+                        
+                        logging.debug(f"CHANNEL EDIT: {sorted(backup_channel.items(), key=lambda x: x[0])}")
 
                         try:
                             await reference_channel.edit(
@@ -497,6 +500,8 @@ class BackupHandler(Cog):
 
                 elif action == "create":
                     pop_if_available("overwrites")
+
+                    logging.debug(f"CHANNEL CREATE: {backup_channel}")
 
                     try:
                         # Trying to create a channel but if certain channel types cannot be created the bot will create either a
@@ -536,17 +541,13 @@ class BackupHandler(Cog):
 
                     # Reference the old channel id to the newly create channel id because the old channel
                     # is no longer available
-                    self.reference_ids.get(backup_id).update(
-                        {str(backup_channel.get("id")): int(new_channel.get("id"))}
-                    )
+                    set_reference(int(backup_channel.get("id")), int(new_channel.get("id")))
 
             return True
 
         # Handling categories before normal channels because of positioning reasons
         category_backup_success = await handle_channels(category_data)
         channels_backup_success = await handle_channels(channel_data)
-
-        self.write_references_to_file()
 
         overall_success = category_backup_success and channels_backup_success
 
@@ -566,9 +567,9 @@ class BackupHandler(Cog):
 
         message = "Loaded Backup." if overall_success else "Couldn't load Backup."
 
-        # Since all channels were deleted before loading the backup, the original
-        # interaction message was deleted, so we have to search for a channel to
-        # send the confirmation that the backup was successful or not
+        # If the channel in which the `backup load` command was executed
+        # is no longer available, we have to search for a channel in which
+        # we send the confirmation wether or not the load was successful
         if interaction.channel not in guild.channels:
             for guild_text_channel in guild.text_channels:
                 try:
@@ -586,7 +587,6 @@ class BackupHandler(Cog):
 
     @backup.command(name="delete", description="Delete a backup")
     @app_commands.describe(backup_id="The backup id to delete")
-    @app_commands.guild_only()  # Unnecessary since this decorator doesn't work on subcommands, but I'll leave it
     async def backup_delete_callback(
         self, interaction: discord.Interaction, backup_id: str
     ) -> None:
@@ -597,27 +597,22 @@ class BackupHandler(Cog):
         if not await check_dm_and_user_permissions(interaction):
             return
 
-        guild_backup = Backup.from_id(backup_id)
+        guild_backup = self.bot.db.get_backup(backup_id)
 
-        if guild_backup.id == "0":
+        if guild_backup.id is None:
             await interaction.followup.send(
-                f"I couldn't find a backup with that id", ephemeral=True
+                f"I couldn't find a backup with that id",
+                ephemeral=True
             )
             return
 
-        deleted = guild_backup.delete()
+        self.bot.db.delete_backup(backup_id)
+        self.bot.db.del_references_of_backup(backup_id)
 
-        # Delete all references for that backup
-        if self.reference_ids.get(backup_id):
-            del self.reference_ids[backup_id]
-            self.write_references_to_file()
-
-        message = f'Succesfully deleted backup with id "{backup_id}"'
-
-        if not deleted:
-            message = f'I couldn\'t delete backup with id "{backup_id}"'
-
-        await interaction.followup.send(message, ephemeral=True)
+        await interaction.followup.send(
+            f'Successfully deleted backup with id "{backup_id}"',
+            ephemeral=True
+        )
 
 
 async def setup(bot):

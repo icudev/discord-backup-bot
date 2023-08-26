@@ -4,13 +4,16 @@ import os
 
 from discord.ext import commands
 from dotenv import load_dotenv
-from utils import Backup, get_path
+from utils import Database, get_path
 
 load_dotenv()
 
 logging.basicConfig(
     level=logging.INFO, format="[ %(levelname)s ] %(name)s: %(message)s"
 )
+
+logging.getLogger("asyncio").setLevel(logging.INFO)
+logging.getLogger("discord").setLevel(logging.INFO)
 
 
 BOT_TOKEN = os.getenv("DISCORD_BOT_TOKEN")
@@ -24,12 +27,12 @@ EXTENSIONS = [
 # Do *NOT* turn this on on the first run
 DISABLE_COMMAND_SYNC = False
 
-FILES_NEEDED = {"backup.json": "{}", "references.json": "{}"}
-
 
 class BackupBot(commands.Bot):
     def __init__(self, *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
+
+        self.db = Database()
 
     async def load_extensions(self) -> None:
         """Loads all extensions listed in `EXTENSIONS`"""
@@ -51,10 +54,7 @@ class BackupBot(commands.Bot):
                 )
 
     async def setup_hook(self) -> None:
-        self.setup_files()
         await self.load_extensions()
-
-        Backup.setup_cache()
 
         if not DISABLE_COMMAND_SYNC:
             logging.info("Syncing command tree...")
@@ -65,20 +65,6 @@ class BackupBot(commands.Bot):
 
     async def on_ready(self) -> None:
         logging.info(f"Logged in as {self.user}")
-
-    async def close(self) -> None:
-        Backup.write_to_file()
-
-    @staticmethod
-    def setup_files() -> None:
-        """Creates necessary files for the bot to run if not already existing"""
-
-        for file_name, file_contents in FILES_NEEDED.items():
-            if not os.path.exists(get_path(file_name)):
-                with open(get_path(file_name), "x") as new_file:
-                    new_file.write(file_contents)
-
-                logging.info(f"Created {file_name}")
 
 
 if __name__ == "__main__":

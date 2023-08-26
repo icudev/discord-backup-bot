@@ -1,17 +1,10 @@
 import discord
-import logging
-import json
-import random
-import string
 import os
 
 from .path import get_path
+from datetime import datetime
 from typing import Any, Callable, Dict, List, Optional, Union
 
-
-BACKUP_ID_LENGTH = 6
-
-assert BACKUP_ID_LENGTH > 1, "Backup ID length has to be greater than 1"
 
 CHANNEL_ATTRIBUTE_NAMES = [
     "name",
@@ -42,11 +35,9 @@ ROLE_ATTRIBUTE_NAMES = [
     "position",
 ]
 
-LETTERS = string.ascii_letters + "0123456789"
-
 
 def generate_unique_id() -> str:
-    """Generates a unique id
+    """Generates a unique id based off of the current timestamp
 
     Returns
     -------
@@ -54,39 +45,7 @@ def generate_unique_id() -> str:
         The unique id
     """
 
-    def generate_random_id() -> str:
-        """Generates a random id
-
-        Returns
-        -------
-        str
-            The random id
-        """
-
-        return "".join([random.choice(LETTERS) for _ in range(BACKUP_ID_LENGTH)])
-
-    _id = generate_random_id()
-
-    while BackupCache.v.get(_id):
-        _id = generate_random_id()
-
-    return _id
-
-
-class BackupCache:
-    """
-    A class used to save all backups in cache
-
-    Attributes
-    ----------
-    v: dict
-        The value of the current cache
-    old: dict
-        A copy of `v` to look for changes
-    """
-
-    v: Dict = {}
-    old: Dict = {}
+    return hex(int(datetime.now().timestamp() * 1000 - datetime.fromisoformat("2020-01-01").timestamp() * 1000))[2:].upper()
 
 
 class Backup:
@@ -121,46 +80,9 @@ class Backup:
         self.public_updates_channel: Optional[int] = public_updates_channel
         self.roles: Optional[List[Dict]] = roles
 
-        if self._id == "0":
-            return
-
-        self.insert_self_to_cache()
-        self.write_to_file()
-
     @property
     def id(self) -> str:
         return self._id
-
-    @staticmethod
-    def setup_cache() -> None:
-        """Loads up the cache using data stored in a file"""
-
-        with open(get_path("backup.json"), "r", encoding="utf-8") as backup_file_reader:
-            BackupCache.v = json.load(backup_file_reader)
-            BackupCache.old = BackupCache.v.copy()
-
-        logging.info("Loaded file into cache")
-
-    @staticmethod
-    def write_to_file() -> bool:
-        """Writes the cache into a file
-
-        Returns
-        -------
-        bool
-            Wether or not the cache was written into the file
-        """
-
-        if BackupCache.v == BackupCache.old:
-            return False
-
-        with open(get_path("backup.json"), "w", encoding="utf-8") as backup_file_writer:
-            json.dump(BackupCache.v, backup_file_writer)
-            BackupCache.old = BackupCache.v.copy()
-
-            logging.info("Saved backups into file")
-
-        return True
 
     @classmethod
     async def create(cls, guild: discord.Guild) -> "Backup":
@@ -177,6 +99,15 @@ class Backup:
             The backup
         """
 
+        roles = [
+            await convert_guild_role_to_json(role)
+            for role in guild.roles
+            if not role.is_bot_managed()
+        ]
+
+        for i, role in enumerate(sorted(roles, key=lambda r: r.get("position"))):
+            role.update({"position": i})
+
         return cls(
             channels=[
                 convert_guild_channel_to_json(channel) for channel in guild.channels
@@ -185,65 +116,17 @@ class Backup:
             public_updates_channel=guild.public_updates_channel.id
             if guild.public_updates_channel
             else None,
-            roles=[
-                await convert_guild_role_to_json(role)
-                for role in guild.roles
-                if not role.is_bot_managed()
-            ],
+            roles=roles,
         )
-
-    @classmethod
-    def from_id(cls, _id: str) -> "Backup":
-        """Loads a backup from cache with the given id
-
-        Parameters
-        ----------
-        _id: str
-            The id of the backup that you want to load
-
-        Returns
-        -------
-        Backup
-            The backup
-        """
-
-        if not BackupCache.v.get(_id):
-            return cls(_id="0")
-
-        return cls(**BackupCache.v.get(_id))
-
-    def insert_self_to_cache(self) -> None:
-        """Inserts self as a json object into the cache"""
-
-        BackupCache.v[self.id] = self.to_json()
 
     def to_json(self) -> dict:
         """Converts self into a dict object"""
 
         return self.__dict__
 
-    def delete(self) -> bool:
-        """Deletes self from the cache
-
-        Returns
-        -------
-        bool
-            Wether or not the deletion was succesful
-        """
-
-        if not BackupCache.v.get(self.id):
-            return False
-
-        BackupCache.v.pop(self.id)
-        self.write_to_file()
-
-        logging.info(f'Deleted backup with id "{self.id}"')
-
-        return True
-
 
 class BackupChannel:
-    def __init__(self, *args, **kwargs) -> None:
+    def __init__(self, **kwargs) -> None:
         self.name = kwargs.get("name")
         self.id = kwargs.get("id")
         self.nsfw = kwargs.get("nsfw")
@@ -301,7 +184,8 @@ class BackupChannel:
 
 def convert_permissionoverwrite_to_list(
     overwrites: Dict[
-        Union[discord.Role, discord.Member, discord.Object], discord.PermissionOverwrite
+        Union[discord.Role,discord.Member, discord.Object],
+        discord.PermissionOverwrite
     ],
 ) -> List[Dict]:
     """Converts a discord.PermissionOverwrite object to a list
@@ -327,7 +211,9 @@ def convert_permissionoverwrite_to_list(
 
 
 def extract_attributes_from_class(
-    attributes: List[str], _class: Any, convert: Optional[Dict[str, Callable]] = None
+    attributes: List[str],
+    _class: Any,
+    convert: Optional[Dict[str, Callable]] = None
 ) -> Dict:
     """Extracts the values of the attributes given in `attributes` from the `_class` object
 

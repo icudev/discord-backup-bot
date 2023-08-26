@@ -149,3 +149,4 @@ cython_debug/
 
 # DBB specific
 *.json
+*.db

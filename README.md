@@ -18,17 +18,16 @@
 
 ## Overview
 This is an easy to use backup bot to save the state of your discord server and load it at any time.
-The Bot is not intended to become a public bot which is why it uses JSON files to save backups.
-That also makes the install easy as you don't have to set up anything besides the dependencies.
+The bot uses SQLite as its db which makes the install as easy as possible.
 
 ## Features
-| Done | Feature |
-|------|:--------|
-| :heavy_check_mark: | Cross Server Backups |
-| :heavy_check_mark: | Channel / Category backups |
-| :x: | Automatic backups in intervals |
-| :heavy_check_mark: | Role backups |
-| :x: | Message backups |
+|        Done        |            Feature             |
+|--------------------|:-------------------------------|
+| :heavy_check_mark: | Cross Server Backups           |
+| :heavy_check_mark: | Channel / Category backups     |
+|         :x:        | Automatic backups in intervals |
+| :heavy_check_mark: | Role backups                   |
+|         :x:        | Message backups                |
 
 ## Setup
 1. Copy `.env.template` to `.env` and insert your discord bot token
@@ -47,10 +46,10 @@ That also makes the install easy as you don't have to set up anything besides th
     ```
 
 ## Usage
-| Command name | Command description |
-|--------------|---------------------|
-| `/backup create` | Creates a backup of your server |
-| `/backup load` | Loads a backup to your server |
+|   Command name   |         Command description         |
+|------------------|-------------------------------------|
+| `/backup create` |   Creates a backup of your server   |
+| `/backup load`   |    Loads a backup to your server    |
 | `/backup delete` | Deletes a backup to save disk space |
 
 ## FAQ
