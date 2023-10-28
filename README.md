@@ -21,7 +21,7 @@ This is an easy to use backup bot to save the state of your discord server and l
 The bot uses SQLite as its db which makes the install as easy as possible.
 
 ## Features
-|        Done        |            Feature             |
+|       Status       |            Feature             |
 |--------------------|:-------------------------------|
 | :heavy_check_mark: | Cross Server Backups           |
 | :heavy_check_mark: | Channel / Category backups     |
