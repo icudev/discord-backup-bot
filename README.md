@@ -1,7 +1,3 @@
-<a href="https://github.com/icudev/discord-backup-bot/">
-    <img src="https://imgur.com/aiOeEzU.png" alt="Discord Backup Bot"/>
-</a>
-
 <h1 align="center" style="margin-top: 20px;">Discord Backup Bot</h1>
 
 <p align="center">
