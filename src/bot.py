@@ -4,7 +4,7 @@ import os
 
 from discord.ext import commands
 from dotenv import load_dotenv
-from utils import Database, get_path
+from utils import Database
 
 load_dotenv()
 
