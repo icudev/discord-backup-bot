@@ -123,6 +123,7 @@ class BackupHandler(Cog):
             # we have to reference the old rules and updates channel to the new ones
             if guild_backup.rules_channel:
                 set_reference(guild_backup.rules_channel, rules_id)
+                set_reference(guild_backup.public_updates_channel, updates_id)
 
         async def delete_all(
             iterable: List[Union[discord.Role, discord.abc.GuildChannel]],
